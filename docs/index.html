@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Kleding Outfit Reflectie</title>
+<style>
+  body { max-width: 700px; margin: auto; font-family: Arial, sans-serif; padding: 1em; }
+  h1,h2 { text-align: center; }
+  .categories { display: flex; justify-content: space-around; margin-bottom: 1em; flex-wrap: wrap; }
+  .category { cursor: pointer; text-align: center; margin: 0.5em; width: 90px; }
+  .category img { width: 55px; height: 55px; border-radius: 5px; }
+  .category.selected { border: 3px solid #007BFF; border-radius: 10px; }
+  label { display: block; margin: 0.7em 0 0.2em 0; }
+  select, input[type=number], textarea { width: 170px; padding: 0.3em; }
+  button { margin-top: 1em; padding: 0.6em 1.2em; font-size: 1em; }
+  #chartContainer { margin-top: 2em; display: flex; flex-wrap: wrap; justify-content: center; gap: 20px; align-items: flex-start;}
+  #suggestion { background: #eef; padding: 1em; border-radius: 7px; margin-top: 1em; flex-basis: 400px; }
+  #video, #canvas { display: block; margin: 0.5em auto; max-width: 350px; border-radius: 10px; }
+  #photoPreview { max-width: 350px; border: 2px solid #007BFF; border-radius: 10px; }
+  #photoContainer { text-align: center; }
+</style>
+</head>
+<body>
+
+<h1>Maak foto van je outfit en reflecteer!</h1>
+<p>Selecteer de kledingstukken die je nu draagt en vul per stuk in hoe vaak en waarom je ze draagt.</p>
+
+<!-- Webcam -->
+<video id="video" autoplay playsinline></video>
+<button id="snapBtn">Maak een foto</button>
+<canvas id="canvas" class="hidden"></canvas>
+
+<!-- Kledingcategorie; iconen uit jouw uploads -->
+<div class="categories" id="categories">
+  <div class="category" data-category="Shirt" tabindex="0">
+    <img src="shirt.jpg" alt="Shirt" />
+    <div>Shirt</div>
+  </div>
+  <div class="category" data-category="Broek" tabindex="0">
+    <img src="broek.jpg" alt="Broek" />
+    <div>Broek</div>
+  </div>
+  <div class="category" data-category="Schoenen" tabindex="0">
+    <img src="schoenen.jpg" alt="Schoenen" />
+    <div>Schoenen</div>
+  </div>
+  <div class="category" data-category="Blouse" tabindex="0">
+    <img src="Blouse.jpg" alt="Blouse" />
+    <div>Blouse</div>
+  </div>
+  <div class="category" data-category="Hoodie" tabindex="0">
+    <img src="hoodie.jpg" alt="Hoodie" />
+    <div>Hoodie</div>
+  </div>
+</div>
+
+<button id="startForm">Vul info over gekozen kleding in</button>
+
+<form id="clothingForm" class="hidden" novalidate>
+  <h2>Vul per kledingstuk je draaggedrag in</h2>
+  <div id="itemsContainer"></div>
+  <button type="submit">Upload en toon overzicht</button>
+</form>
+
+<div id="chartContainer" class="hidden">
+  <div>
+    <h2>Draagfrequentie Overzicht</h2>
+    <canvas id="freqChart"></canvas>
+    <div id="suggestion" class="hidden"></div>
+  </div>
+  <div id="photoContainer" class="hidden">
+    <h2>Jouw Outfit Foto</h2>
+    <img id="photoPreview" alt="Outfit foto" />
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+  const video = document.getElementById('video');
+  const snapBtn = document.getElementById('snapBtn');
+  const canvas = document.getElementById('canvas');
+
+  let photoDataUrl = "";
+
+  navigator.mediaDevices.getUserMedia({ video: true }).then(stream => {
+    video.srcObject = stream;
+  }).catch(() => alert('Webcam niet beschikbaar.'));
+
+  snapBtn.addEventListener('click', () => {
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0);
+    canvas.classList.remove('hidden');
+    video.classList.add('hidden');
+    snapBtn.disabled = true;
+    photoDataUrl = canvas.toDataURL('image/png');
+  });
+
+  const categoryEls = document.querySelectorAll('.category');
+  const startFormBtn = document.getElementById('startForm');
+  const clothingForm = document.getElementById('clothingForm');
+  const itemsContainer = document.getElementById('itemsContainer');
+  const chartContainer = document.getElementById('chartContainer');
+  const suggestionDiv = document.getElementById('suggestion');
+  const photoContainer = document.getElementById('photoContainer');
+  const photoPreview = document.getElementById('photoPreview');
+
+  let selectedCategories = [];
+
+  categoryEls.forEach(el => {
+    el.addEventListener('click', () => { toggleCategory(el); });
+    el.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleCategory(el); } });
+  });
+
+  function toggleCategory(el) {
+    const cat = el.getAttribute('data-category');
+    if (selectedCategories.includes(cat)) {
+      selectedCategories = selectedCategories.filter(c => c !== cat);
+      el.classList.remove('selected');
+    } else {
+      selectedCategories.push(cat);
+      el.classList.add('selected');
+    }
+  }
+
+  startFormBtn.addEventListener('click', () => {
+    if (selectedCategories.length === 0) {
+      alert('Selecteer minimaal één kledingcategorie.');
+      return;
+    }
+    buildForm(selectedCategories);
+    clothingForm.classList.remove('hidden');
+    startFormBtn.disabled = true;
+    document.getElementById('categories').classList.add('hidden');
+  });
+
+  function buildForm(categories) {
+    itemsContainer.innerHTML = '';
+    categories.forEach((cat, idx) => {
+      const html = `
+        <fieldset>
+          <legend>${cat}</legend>
+          <label>Hoe vaak draag je dit item (aantal keren)?
+            <input type="number" min="0" value="0" name="wears_${idx}" required>
+          </label>
+          <label>Hoe lang heb je dit item al?
+            <select name="duration_${idx}" required>
+              <option value="0.02">&lt;1 week</option>
+              <option value="0.08">1-3 weken</option>
+              <option value="0.25">1-3 maanden</option>
+              <option value="0.5">4-6 maanden</option>
+              <option value="1">7-12 maanden</option>
+              <option value="2">1-2 jaar</option>
+              <option value="3">3-5 jaar</option>
+              <option value="5">Meer dan 5 jaar</option>
+            </select>
+          </label>
+          <label>Waarom draag je dit kledingstuk vandaag?
+            <textarea name="why_${idx}" rows="2" placeholder="Comfort, stijl, gelegenheid, etc." required></textarea>
+          </label>
+        </fieldset>`;
+      itemsContainer.insertAdjacentHTML('beforeend', html);
+    });
+  }
+
+  clothingForm.addEventListener('submit', e => {
+    e.preventDefault();
+    const formData = new FormData(clothingForm);
+    const items = [];
+    for (let i = 0; i < selectedCategories.length; i++) {
+      const wears = parseInt(formData.get(`wears_${i}`), 10);
+      const duration = parseFloat(formData.get(`duration_${i}`));
+      const why = formData.get(`why_${i}`);
+      items.push({ name: selectedCategories[i], wears, duration, why });
+    }
+
+    const minItem = items.reduce((a, b) => a.wears < b.wears ? a : b);
+
+    // Toon foto naast grafiek
+    photoPreview.src = photoDataUrl;
+    photoContainer.classList.remove('hidden');
+    chartContainer.classList.remove('hidden');
+
+    showChart(items);
+    suggestUsage(minItem, items);
+  });
+
+  function showChart(items) {
+    if (window.freqChartInstance) window.freqChartInstance.destroy();
+    const labels = items.map(i => i.name);
+    const data = items.map(i => i.wears);
+    const colors = items.map(i =>
+      i === items.reduce((a, b) => a.wears < b.wears ? a : b) ? 'rgba(255,99,132,0.7)' : 'rgba(54,162,235,0.7)'
+    );
+
+    const ctx = document.getElementById('freqChart').getContext('2d');
+    window.freqChartInstance = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [{
+          label: 'Aantal keer gedragen',
+          data,
+          backgroundColor: colors,
+          borderColor: colors.map(c => c.replace('0.7', '1')),
+          borderWidth: 1
+        }]
+      },
+      options: {
+        scales: { y: { beginAtZero: true, stepSize: 1 } },
+        plugins: { legend: { display: false }, tooltip: { enabled: true } }
+      }
+    });
+  }
+
+  function suggestUsage(minItem, allItems) {
+    suggestionDiv.classList.remove('hidden');
+    let text = `<h3>Advies voor je minst gedragen kledingstuk: ${minItem.name}</h3>`;
+    if (minItem.wears === 0) {
+      text += `<p>Je hebt dit item nog nooit gedragen. Overweeg het te verkopen via bijvoorbeeld Vinted of te doneren.</p>`;
+    } else if (minItem.wears <= 5) {
+      const vaakGedragen = allItems.find(i => i.name !== minItem.name && i.wears > 5);
+      text += `<p>Je draagt dit item weinig. Probeer het te combineren met je vaak gedragen item${vaakGedragen ? `: ${vaakGedragen.name}` : ''}.</p>`;
+      text += `<p>Reden die je invulde: <em>${minItem.why}</em></p>`;
+      text += `<p>Wil je het liever verkopen of houden? Maak een keuze!</p>`;
+    } else {
+      text += `<p>Je draagt dit item regelmatig. Probeer nieuwe combinaties om het nog vaker te dragen.</p>`;
+      text += `<p>Reden die je invulde: <em>${minItem.why}</em></p>`;
+    }
+    let tijdTekst = 'Je hebt dit item ';
+    switch (minItem.duration) {
+      case 0.02: tijdTekst += 'minder dan een week'; break;
+      case 0.08: tijdTekst += '1 tot 3 weken'; break;
+      case 0.25: tijdTekst += '1 tot 3 maanden'; break;
+      case 0.5: tijdTekst += '4 tot 6 maanden'; break;
+      case 1: tijdTekst += '7 tot 12 maanden'; break;
+      case 2: tijdTekst += '1 tot 2 jaar'; break;
+      case 3: tijdTekst += '3 tot 5 jaar'; break;
+      case 5: tijdTekst += 'langer dan 5 jaar'; break;
+      default: tijdTekst += 'onbekende tijd'; break;
+    }
+    tijdTekst += ' in je bezit.';
+    text += `<p><em>${tijdTekst}</em></p>`;
+    suggestionDiv.innerHTML = text;
+  }
+</script>
+
+</body>
+</html>
